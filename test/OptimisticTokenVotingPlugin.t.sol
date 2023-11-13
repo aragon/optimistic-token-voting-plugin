@@ -6,19 +6,19 @@ import {OptimisticTokenVotingPlugin} from "../src/OptimisticTokenVotingPlugin.so
 
 contract OptimisticTokenVotingPluginTest is Test {
     OptimisticTokenVotingPlugin public plugin;
+    error Unimplemented();
 
     function setUp() public {
         plugin = new OptimisticTokenVotingPlugin();
-        // plugin.setNumber(0);
+        
+        revert Unimplemented();
     }
 
-    function test_Increment() public {
-        // plugin.increment();
-        // assertEq(plugin.number(), 1);
-    }
+    function test_OnlyProposers() public {}
+    function test_NonProposersCannotCreate() public {}
+    function test_CorrectDates() public {}
 
     function testFuzz_SetNumber(uint256 x) public {
-        // plugin.setNumber(x);
-        // assertEq(plugin.number(), x);
+        revert Unimplemented();
     }
 }
