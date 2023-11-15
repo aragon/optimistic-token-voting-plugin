@@ -78,7 +78,7 @@ contract OptimisticTokenVotingPlugin is
         keccak256("UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION");
 
     /// @notice The [ERC-165](https://eips.ethereum.org/EIPS/eip-165) interface ID of the contract.
-    bytes4 internal constant OPTIMISTIC_GOVERNANCE_INTERFACE_ID =
+    bytes4 public constant OPTIMISTIC_GOVERNANCE_INTERFACE_ID =
         this.initialize.selector ^
             this.getProposal.selector ^
             this.updateOptimisticGovernanceSettings.selector;
@@ -480,11 +480,11 @@ contract OptimisticTokenVotingPlugin is
         }
 
         if (
-            totalVotingPower(block.number) <
+            totalVotingPower(block.number - 1) <
             _governanceSettings.minProposerVotingPower
         ) {
             revert MinProposerVotingPowerOutOfBounds({
-                limit: totalVotingPower(block.number),
+                limit: totalVotingPower(block.number - 1),
                 actual: _governanceSettings.minProposerVotingPower
             });
         }
