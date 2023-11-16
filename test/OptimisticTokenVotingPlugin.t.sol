@@ -8,7 +8,7 @@ import {DAO} from "@aragon/osx/core/dao/DAO.sol";
 import {IDAO} from "@aragon/osx/core/dao/IDAO.sol";
 import {IProposal} from "@aragon/osx/core/plugin/proposal/IProposal.sol";
 import {IMembership} from "@aragon/osx/core/plugin/membership/IMembership.sol";
-import {RATIO_BASE} from "@aragon/osx/plugins/utils/Ratio.sol";
+import {RATIO_BASE, RatioOutOfBounds} from "@aragon/osx/plugins/utils/Ratio.sol";
 import {DaoUnauthorized} from "@aragon/osx/core/utils/auth.sol";
 import {ERC20Mock} from "./mocks/ERC20Mock.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -44,6 +44,12 @@ contract OptimisticTokenVotingPluginTest is Test {
         uint256 votingPower
     );
     event ProposalExecuted(uint256 indexed proposalId);
+    event OptimisticGovernanceSettingsUpdated(
+        uint32 minVetoRatio,
+        uint64 minDuration,
+        uint256 minProposerVotingPower
+    );
+    event Upgraded(address indexed implementation);
 
     error Unimplemented();
 
@@ -237,18 +243,6 @@ contract OptimisticTokenVotingPluginTest is Test {
             1 ether,
             "Incorrect minProposerVotingPower"
         );
-    }
-
-    function test_InitializeCreatesANewERC20Token() public {
-        revert Unimplemented();
-    }
-
-    function test_InitializeWrapsAnExistingToken() public {
-        revert Unimplemented();
-    }
-
-    function test_InitializeUsesAnExistingERC20Token() public {
-        revert Unimplemented();
     }
 
     function test_InitializeEmitsEvent() public {
@@ -1769,62 +1763,389 @@ contract OptimisticTokenVotingPluginTest is Test {
         plugin.execute(proposalId);
     }
 
+    // Update settings
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenNoPermission()
         public
     {
-        revert Unimplemented();
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 5),
+                    minDuration: 15 days,
+                    minProposerVotingPower: 1 ether
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DaoUnauthorized.selector,
+                address(dao),
+                address(plugin),
+                alice,
+                plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenTheMinVetoRatioIsZero()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: 0,
+                    minDuration: 10 days,
+                    minProposerVotingPower: 0 ether
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(RatioOutOfBounds.selector, 1, 0)
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenTheMinVetoRatioIsAboveTheMaximum()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE + 1),
+                    minDuration: 10 days,
+                    minProposerVotingPower: 0 ether
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RatioOutOfBounds.selector,
+                RATIO_BASE,
+                uint32(RATIO_BASE + 1)
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenTheMinDurationIsLessThanFourDays()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 10),
+                    minDuration: 4 days - 1,
+                    minProposerVotingPower: 0 ether
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                4 days,
+                4 days - 1
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 2
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 10 hours,
+            minProposerVotingPower: 0 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                4 days,
+                10 hours
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 3
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 0,
+            minProposerVotingPower: 0 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                4 days,
+                0
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenTheMinDurationIsMoreThanOneYear()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 10),
+                    minDuration: 365 days + 1,
+                    minProposerVotingPower: 0 ether
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                365 days,
+                365 days + 1
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 2
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 500 days,
+            minProposerVotingPower: 0 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                365 days,
+                500 days
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 3
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 1000 days,
+            minProposerVotingPower: 0 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.MinDurationOutOfBounds.selector,
+                365 days,
+                1000 days
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenMinProposerVotingPowerIsMoreThanTheTokenSupply()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 10),
+                    minDuration: 10 days,
+                    minProposerVotingPower: 10 ether + 1
+                });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin
+                    .MinProposerVotingPowerOutOfBounds
+                    .selector,
+                10 ether,
+                10 ether + 1
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 2
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 10 days,
+            minProposerVotingPower: 50 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin
+                    .MinProposerVotingPowerOutOfBounds
+                    .selector,
+                10 ether,
+                50 ether
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
+
+        // 3
+        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
+            minVetoRatio: uint32(RATIO_BASE / 10),
+            minDuration: 10 days,
+            minProposerVotingPower: 200 ether
+        });
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin
+                    .MinProposerVotingPowerOutOfBounds
+                    .selector,
+                10 ether,
+                200 ether
+            )
+        );
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
     function test_UpdateOptimisticGovernanceSettingsEmitsAnEventWhenSuccessful()
         public
     {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory newSettings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 5),
+                    minDuration: 15 days,
+                    minProposerVotingPower: 1 ether
+                });
+
+        vm.expectEmit();
+        emit OptimisticGovernanceSettingsUpdated({
+            minVetoRatio: uint32(RATIO_BASE / 5),
+            minDuration: 15 days,
+            minProposerVotingPower: 1 ether
+        });
+
+        plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
+    // Upgrade plugin
     function test_UpgradeToRevertsWhenCalledFromNonUpgrader() public {
-        revert Unimplemented();
+        address _pluginBase = address(new OptimisticTokenVotingPlugin());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DaoUnauthorized.selector,
+                address(dao),
+                address(plugin),
+                alice,
+                plugin.UPGRADE_PLUGIN_PERMISSION_ID()
+            )
+        );
+
+        plugin.upgradeTo(_pluginBase);
     }
 
     function test_UpgradeToAndCallRevertsWhenCalledFromNonUpgrader() public {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        address _pluginBase = address(new OptimisticTokenVotingPlugin());
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory settings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 5),
+                    minDuration: 15 days,
+                    minProposerVotingPower: 1 ether
+                });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DaoUnauthorized.selector,
+                address(dao),
+                address(plugin),
+                alice,
+                plugin.UPGRADE_PLUGIN_PERMISSION_ID()
+            )
+        );
+
+        plugin.upgradeToAndCall(
+            _pluginBase,
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin
+                    .updateOptimisticGovernanceSettings
+                    .selector,
+                settings
+            )
+        );
     }
 
     function test_UpgradeToSucceedsWhenCalledFromUpgrader() public {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPGRADE_PLUGIN_PERMISSION_ID()
+        );
+
+        address _pluginBase = address(new OptimisticTokenVotingPlugin());
+
+        vm.expectEmit();
+        emit Upgraded(_pluginBase);
+
+        plugin.upgradeTo(_pluginBase);
     }
 
     function test_UpgradeToAndCallSucceedsWhenCalledFromUpgrader() public {
-        revert Unimplemented();
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPGRADE_PLUGIN_PERMISSION_ID()
+        );
+        dao.grant(
+            address(plugin),
+            alice,
+            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
+        );
+
+        address _pluginBase = address(new OptimisticTokenVotingPlugin());
+
+        vm.expectEmit();
+        emit Upgraded(_pluginBase);
+
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory settings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32(RATIO_BASE / 5),
+                    minDuration: 15 days,
+                    minProposerVotingPower: 1 ether
+                });
+        plugin.upgradeToAndCall(
+            _pluginBase,
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin
+                    .updateOptimisticGovernanceSettings
+                    .selector,
+                settings
+            )
+        );
     }
 
     // HELPERS

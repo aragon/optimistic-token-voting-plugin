@@ -12,16 +12,4 @@ contract OptimisticTokenVotingPluginSetupTest is Test {
         // plugin = new OptimisticTokenVotingPluginSetup();
         // plugin.setNumber(0);
     }
-
-    function test_Increment() public {
-        // plugin.increment();
-        // assertEq(plugin.number(), 1);
-        revert Unimplemented();
-    }
-
-    function testFuzz_SetNumber(uint256 x) public {
-        // plugin.setNumber(x);
-        // assertEq(plugin.number(), x);
-        revert Unimplemented();
-    }
 }
