@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-pragma solidity ^0.8.8;
+pragma solidity ^0.8.17;
 
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
@@ -12,9 +12,8 @@ import {IOptimisticTokenVoting} from "./IOptimisticTokenVoting.sol";
 
 import {ProposalUpgradeable} from "@aragon/osx/core/plugin/proposal/ProposalUpgradeable.sol";
 import {PluginUUPSUpgradeable} from "@aragon/osx/core/plugin/PluginUUPSUpgradeable.sol";
-import {RATIO_BASE, _applyRatioCeiled} from "@aragon/osx/plugins/utils/Ratio.sol";
+import {RATIO_BASE, _applyRatioCeiled, RatioOutOfBounds} from "@aragon/osx/plugins/utils/Ratio.sol";
 import {IDAO} from "@aragon/osx/core/dao/IDAO.sol";
-import {RATIO_BASE, RatioOutOfBounds} from "@aragon/osx/plugins/utils/Ratio.sol";
 
 /// @title OptimisticTokenVotingPlugin
 /// @author Aragon Association - 2023
@@ -79,7 +78,7 @@ contract OptimisticTokenVotingPlugin is
         keccak256("UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION");
 
     /// @notice The [ERC-165](https://eips.ethereum.org/EIPS/eip-165) interface ID of the contract.
-    bytes4 internal constant OPTIMISTIC_GOVERNANCE_INTERFACE_ID =
+    bytes4 public constant OPTIMISTIC_GOVERNANCE_INTERFACE_ID =
         this.initialize.selector ^
             this.getProposal.selector ^
             this.updateOptimisticGovernanceSettings.selector;
@@ -481,11 +480,11 @@ contract OptimisticTokenVotingPlugin is
         }
 
         if (
-            totalVotingPower(block.number) <
+            totalVotingPower(block.number - 1) <
             _governanceSettings.minProposerVotingPower
         ) {
             revert MinProposerVotingPowerOutOfBounds({
-                limit: totalVotingPower(block.number),
+                limit: totalVotingPower(block.number - 1),
                 actual: _governanceSettings.minProposerVotingPower
             });
         }
