@@ -38,6 +38,12 @@ contract OptimisticTokenVotingPluginTest is Test {
         IDAO.Action[] actions,
         uint256 allowFailureMap
     );
+    event VetoCast(
+        uint256 indexed proposalId,
+        address indexed voter,
+        uint256 votingPower
+    );
+    event ProposalExecuted(uint256 indexed proposalId);
 
     error Unimplemented();
 
@@ -68,6 +74,7 @@ contract OptimisticTokenVotingPluginTest is Test {
             )
         );
         votingToken.mint(alice, 10 ether);
+        votingToken.delegate(alice);
         vm.roll(block.number + 1);
 
         // Deploy a new plugin instance
@@ -98,6 +105,7 @@ contract OptimisticTokenVotingPluginTest is Test {
         dao.grant(address(plugin), alice, plugin.PROPOSER_PERMISSION_ID());
     }
 
+    // Initialize
     function test_InitializeRevertsIfInitialized() public {
         OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
             memory settings = OptimisticTokenVotingPlugin
@@ -268,6 +276,7 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
     }
 
+    // Getters
     function test_SupportsOptimisticGovernanceInterface() public {
         bool supported = plugin.supportsInterface(
             plugin.OPTIMISTIC_GOVERNANCE_INTERFACE_ID()
@@ -580,6 +589,7 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
     }
 
+    // Create proposal
     function test_CreateProposalRevertsWhenCalledByANonProposer() public {
         vm.stopPrank();
         vm.startPrank(bob);
@@ -930,108 +940,833 @@ contract OptimisticTokenVotingPluginTest is Test {
         assertEq(open1, false, "The proposal should not be open anymore");
     }
 
+    // Can Veto
     function test_CanVetoReturnsFalseWhenAProposalDoesntExist() public {
-        revert Unimplemented();
+        vm.roll(10);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal("ipfs://", actions, 0, 0, 0);
+        vm.roll(20);
+
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            true,
+            "Alice should be able to veto"
+        );
+
+        // non existing
+        assertEq(
+            plugin.canVeto(proposalId + 200, alice),
+            false,
+            "Alice should not be able to veto on non existing proposals"
+        );
     }
 
     function test_CanVetoReturnsFalseWhenAProposalHasNotStarted() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+
+        // Unstarted
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            false,
+            "Alice should not be able to veto"
+        );
+
+        // Started
+        vm.warp(startDate + 1);
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            true,
+            "Alice should be able to veto"
+        );
     }
 
     function test_CanVetoReturnsFalseWhenAVoterAlreadyVetoed() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        plugin.veto(proposalId);
+
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            false,
+            "Alice should not be able to veto"
+        );
     }
 
-    function test_CanVetoReturnsFalseWhenAnAddressHasNoVotingPower() public {
-        revert Unimplemented();
+    function test_CanVetoReturnsFalseWhenAVoterAlreadyEnded() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+        vm.warp(endDate + 1);
+
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            false,
+            "Alice should not be able to veto"
+        );
+    }
+
+    function test_CanVetoReturnsFalseWhenNoVotingPower() public {
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+
+        vm.warp(startDate + 1);
+
+        // Alice owns tokens
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            true,
+            "Alice should be able to veto"
+        );
+
+        // Bob owns no tokens
+        assertEq(
+            plugin.canVeto(proposalId, bob),
+            false,
+            "Bob should not be able to veto"
+        );
     }
 
     function test_CanVetoReturnsTrueOtherwise() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.canVeto(proposalId, alice),
+            true,
+            "Alice should be able to veto"
+        );
     }
 
-    function test_VetoRevertsWhenTheProposalDoesntExist() public {
-        revert Unimplemented();
+    // Veto
+    function test_VetoRevertsWhenAProposalDoesntExist() public {
+        vm.roll(10);
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.roll(20);
+
+        // non existing
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalVetoingForbidden.selector,
+                proposalId + 200,
+                alice
+            )
+        );
+        plugin.veto(proposalId + 200);
     }
 
-    function test_VetoRevertsWhenTheProposalHasNotStarted() public {
-        revert Unimplemented();
+    function test_VetoRevertsWhenAProposalHasNotStarted() public {
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+
+        // Unstarted
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalVetoingForbidden.selector,
+                proposalId,
+                alice
+            )
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            false,
+            "Alice should not have vetoed"
+        );
+
+        // Started
+        vm.warp(startDate + 1);
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
     }
 
-    function test_VetoRevertsWhenNotATokenHolder() public {
-        revert Unimplemented();
+    function test_VetoRevertsWhenAVoterAlreadyVetoed() public {
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            false,
+            "Alice should not have vetoed"
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalVetoingForbidden.selector,
+                proposalId,
+                alice
+            )
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
     }
 
-    function test_VetoRevertsWhenAlreadyVetoed() public {
-        revert Unimplemented();
+    function test_VetoRevertsWhenAVoterAlreadyEnded() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+        vm.warp(endDate + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalVetoingForbidden.selector,
+                proposalId,
+                alice
+            )
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            false,
+            "Alice should not have vetoed"
+        );
+    }
+
+    function test_VetoRevertsWhenNoVotingPower() public {
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+
+        vm.warp(startDate + 1);
+
+        vm.stopPrank();
+        vm.startPrank(bob);
+
+        // Bob owns no tokens
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalVetoingForbidden.selector,
+                proposalId,
+                bob
+            )
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, bob),
+            false,
+            "Bob should not have vetoed"
+        );
+
+        vm.stopPrank();
+        vm.startPrank(alice);
+
+        // Alice owns tokens
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
     }
 
     function test_VetoRegistersAVetoForTheTokenHolderAndIncreasesTheTally()
         public
     {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        (, , , uint256 tally1, , ) = plugin.getProposal(proposalId);
+        assertEq(tally1, 0, "Tally should be zero");
+
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
+
+        (, , , uint256 tally2, , ) = plugin.getProposal(proposalId);
+        assertEq(tally2, 10 ether, "Tally should be 10 eth");
     }
 
     function test_VetoEmitsAnEvent() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        vm.expectEmit();
+        emit VetoCast(proposalId, alice, 10 ether);
+        plugin.veto(proposalId);
     }
 
-    function test_HasVetoedReturnsTheRightValue() public {
-        revert Unimplemented();
+    // Has vetoed
+    function test_HasVetoedReturnsTheRightValues() public {
+        uint64 startDate = 50;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            0
+        );
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            false,
+            "Alice should not have vetoed"
+        );
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.hasVetoed(proposalId, alice),
+            true,
+            "Alice should have vetoed"
+        );
+    }
+
+    // Can execute
+    function test_CanExecuteReturnsFalseWhenNotEnded() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
+
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
+        plugin.veto(proposalId);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable yet"
+        );
+    }
+
+    function test_CanExecuteReturnsFalseWhenDefeated() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
+
+        vm.warp(startDate + 1);
+
+        plugin.veto(proposalId);
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable yet"
+        );
+
+        vm.warp(endDate + 1);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
     }
 
     function test_CanExecuteReturnsFalseWhenAlreadyExecuted() public {
-        revert Unimplemented();
-    }
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
 
-    function test_CanExecuteReturnsFalseWhenStillOngoing() public {
-        revert Unimplemented();
-    }
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
 
-    function test_CanExecuteReturnsFalseWhenEnoughVetoesAreRegistered() public {
-        revert Unimplemented();
+        vm.warp(endDate + 1);
+        assertEq(
+            plugin.canExecute(proposalId),
+            true,
+            "The proposal should be executable"
+        );
+
+        plugin.execute(proposalId);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
     }
 
     function test_CanExecuteReturnsTrueOtherwise() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable"
+        );
+
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            false,
+            "The proposal shouldn't be executable yet"
+        );
+
+        vm.warp(endDate + 1);
+
+        assertEq(
+            plugin.canExecute(proposalId),
+            true,
+            "The proposal should be executable"
+        );
     }
 
-    function test_IsMinVetoRatioReachedReturnsFalseWhenNotEnoughPeopleHaveVetoed()
-        public
-    {
-        revert Unimplemented();
+    // Veto threshold reached
+    function test_IsMinVetoRatioReachedReturnsTheAppropriateValues() public {
+        // Deploy ERC20 token
+        votingToken = ERC20Mock(
+            createProxyAndCall(
+                address(votingTokenBase),
+                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+            )
+        );
+        votingToken.mint(alice, 24 ether);
+        votingToken.mint(bob, 1 ether);
+        votingToken.mint(randomWallet, 75 ether);
+
+        votingToken.delegate(alice);
+
+        vm.stopPrank();
+        vm.startPrank(bob);
+        votingToken.delegate(bob);
+
+        vm.stopPrank();
+        vm.startPrank(randomWallet);
+        votingToken.delegate(randomWallet);
+
+        vm.roll(block.number + 1);
+
+        // Deploy a new plugin instance
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            memory settings = OptimisticTokenVotingPlugin
+                .OptimisticGovernanceSettings({
+                    minVetoRatio: uint32((RATIO_BASE * 25) / 100),
+                    minDuration: 10 days,
+                    minProposerVotingPower: 0
+                });
+
+        plugin = OptimisticTokenVotingPlugin(
+            createProxyAndCall(
+                address(pluginBase),
+                abi.encodeWithSelector(
+                    OptimisticTokenVotingPlugin.initialize.selector,
+                    dao,
+                    settings,
+                    votingToken
+                )
+            )
+        );
+
+        vm.stopPrank();
+        vm.startPrank(alice);
+
+        // Permissions
+        dao.grant(address(dao), address(plugin), dao.EXECUTE_PERMISSION_ID());
+        dao.grant(address(plugin), alice, plugin.PROPOSER_PERMISSION_ID());
+
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.warp(startDate + 1);
+
+        assertEq(
+            plugin.isMinVetoRatioReached(proposalId),
+            false,
+            "The veto threshold shouldn't be met"
+        );
+        // Alice vetoes 24%
+        plugin.veto(proposalId);
+
+        assertEq(
+            plugin.isMinVetoRatioReached(proposalId),
+            false,
+            "The veto threshold shouldn't be met"
+        );
+
+        vm.stopPrank();
+        vm.startPrank(bob);
+
+        // Bob vetoes +1% => met
+        plugin.veto(proposalId);
+
+        assertEq(
+            plugin.isMinVetoRatioReached(proposalId),
+            true,
+            "The veto threshold should be met"
+        );
+
+        vm.stopPrank();
+        vm.startPrank(randomWallet);
+
+        // Random wallet vetoes +75% => still met
+        plugin.veto(proposalId);
+
+        assertEq(
+            plugin.isMinVetoRatioReached(proposalId),
+            true,
+            "The veto threshold should still be met"
+        );
     }
 
-    function test_IsMinVetoRatioReachedReturnsTrueWhenEnoughPeopleHaveVetoed()
-        public
-    {
-        revert Unimplemented();
+    // Execute
+    function test_ExecuteRevertsWhenNotEnded() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalExecutionForbidden.selector,
+                proposalId
+            )
+        );
+        plugin.execute(proposalId);
+
+        vm.warp(startDate + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalExecutionForbidden.selector,
+                proposalId
+            )
+        );
+        plugin.execute(proposalId);
+
+        vm.warp(endDate);
+        plugin.execute(proposalId);
+
+        (, bool executed, , , , ) = plugin.getProposal(proposalId);
+        assertEq(executed, true, "The proposal should be executed");
+    }
+
+    function test_ExecuteRevertsWhenDefeated() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.warp(startDate + 1);
+
+        plugin.veto(proposalId);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalExecutionForbidden.selector,
+                proposalId
+            )
+        );
+        plugin.execute(proposalId);
+
+        vm.warp(endDate + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalExecutionForbidden.selector,
+                proposalId
+            )
+        );
+        plugin.execute(proposalId);
+
+        (, bool executed, , , , ) = plugin.getProposal(proposalId);
+        assertEq(executed, false, "The proposal should not be executed");
     }
 
     function test_ExecuteRevertsWhenAlreadyExecuted() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.warp(endDate + 1);
+
+        plugin.execute(proposalId);
+
+        (, bool executed1, , , , ) = plugin.getProposal(proposalId);
+        assertEq(executed1, true, "The proposal should be executed");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OptimisticTokenVotingPlugin.ProposalExecutionForbidden.selector,
+                proposalId
+            )
+        );
+        plugin.execute(proposalId);
+
+        (, bool executed2, , , , ) = plugin.getProposal(proposalId);
+        assertEq(executed2, true, "The proposal should be executed");
     }
 
-    function test_ExecuteRevertsWhenStillOngoing() public {
-        revert Unimplemented();
-    }
+    function test_ExecuteSucceedsOtherwise() public {
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
 
-    function test_ExecuteRevertsWhenEnoughVetoesAreRegistered() public {
-        revert Unimplemented();
-    }
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
 
-    function testFuzz_ExecuteExecutesTheProposalActionsWhenNonDefeated(
-        uint256 _tokenSupply
-    ) public {
-        revert Unimplemented();
+        vm.warp(endDate + 1);
+
+        plugin.execute(proposalId);
     }
 
     function test_ExecuteMarksTheProposalAsExecuted() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.warp(endDate + 1);
+
+        plugin.execute(proposalId);
+
+        (, bool executed2, , , , ) = plugin.getProposal(proposalId);
+        assertEq(executed2, true, "The proposal should be executed");
     }
 
     function test_ExecuteEmitsAnEvent() public {
-        revert Unimplemented();
+        uint64 startDate = 50;
+        uint64 endDate = startDate + 10 days;
+        vm.warp(startDate - 1);
+
+        IDAO.Action[] memory actions = new IDAO.Action[](0);
+        uint256 proposalId = plugin.createProposal(
+            "ipfs://",
+            actions,
+            0,
+            startDate,
+            endDate
+        );
+
+        vm.warp(endDate + 1);
+
+        vm.expectEmit();
+        emit ProposalExecuted(proposalId);
+        plugin.execute(proposalId);
     }
 
     function test_UpdateOptimisticGovernanceSettingsRevertsWhenNoPermission()
