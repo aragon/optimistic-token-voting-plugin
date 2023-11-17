@@ -10,18 +10,18 @@ import {IProposal} from "@aragon/osx/core/plugin/proposal/IProposal.sol";
 import {IMembership} from "@aragon/osx/core/plugin/membership/IMembership.sol";
 import {RATIO_BASE, RatioOutOfBounds} from "@aragon/osx/plugins/utils/Ratio.sol";
 import {DaoUnauthorized} from "@aragon/osx/core/utils/auth.sol";
-import {ERC20Mock} from "./mocks/ERC20Mock.sol";
+import {ERC20VotesMock} from "./mocks/ERC20VotesMock.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 
 contract OptimisticTokenVotingPluginTest is Test {
     address immutable daoBase = address(new DAO());
     address immutable pluginBase = address(new OptimisticTokenVotingPlugin());
-    address immutable votingTokenBase = address(new ERC20Mock());
+    address immutable votingTokenBase = address(new ERC20VotesMock());
 
     DAO public dao;
     OptimisticTokenVotingPlugin public plugin;
-    ERC20Mock votingToken;
+    ERC20VotesMock votingToken;
 
     address alice = address(0xa11ce);
     address bob = address(0xB0B);
@@ -51,8 +51,6 @@ contract OptimisticTokenVotingPluginTest is Test {
     );
     event Upgraded(address indexed implementation);
 
-    error Unimplemented();
-
     function setUp() public {
         vm.startPrank(alice);
 
@@ -73,10 +71,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
 
         // Deploy ERC20 token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 10 ether);
@@ -199,10 +197,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         assertEq(plugin.minDuration(), 25 days, "Incorrect minDuration");
 
         // A token with 10 eth supply
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 10 ether);
@@ -331,10 +329,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         address oldToken = address(plugin.getVotingToken());
 
         // New token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
 
@@ -384,10 +382,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
 
         // New token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 15 ether);
@@ -496,10 +494,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
 
         // New token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 10 ether);
@@ -543,10 +541,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
 
         // New token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 10 ether);
@@ -659,10 +657,10 @@ contract OptimisticTokenVotingPluginTest is Test {
         vm.startPrank(alice);
 
         // Deploy ERC20 token (0 supply)
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
 
@@ -1484,10 +1482,10 @@ contract OptimisticTokenVotingPluginTest is Test {
     // Veto threshold reached
     function test_IsMinVetoRatioReachedReturnsTheAppropriateValues() public {
         // Deploy ERC20 token
-        votingToken = ERC20Mock(
+        votingToken = ERC20VotesMock(
             createProxyAndCall(
                 address(votingTokenBase),
-                abi.encodeWithSelector(ERC20Mock.initialize.selector)
+                abi.encodeWithSelector(ERC20VotesMock.initialize.selector)
             )
         );
         votingToken.mint(alice, 24 ether);
