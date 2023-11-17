@@ -1,6 +1,6 @@
 # Optimistic token voting plugin for OSx
 
-This OSx plugin is an instance of the Optimistic Dual Governance model, where selected groups or members can submit proposals and token holders can veto them.Proposals that have not been vetoed after a period of time can be eventually executed by anyone. 
+This OSx plugin is an instance of the Optimistic Dual Governance model, where selected groups or members can submit proposals and token holders can veto them. Proposals that have not been vetoed after a period of time can be eventually executed by anyone. 
 
 OSx plugins are designed to encapsulate custom behaviour and permissions so that they can be installed on any Aragon DAO.
 
@@ -185,7 +185,7 @@ To this end, the DAO has a struct called `Action { to, value, data }`, which wil
 
 The recommended way to create a DAO is by using `@aragon/sdk-client`. It uses the `DAOFactory` under the hood and it reduces the amount of low level interactions with the protocol.
 
-[See an example](https://devs.aragon.org/docs/sdk/examples/client/create-dao).
+[See an example](https://devs.aragon.org/docs/sdk/examples/client/create-dao)
 
 In the example, the code is making use of the existing JS client for [Aragon's Token Voting plugin](https://github.com/aragon/sdk/tree/develop/modules/client/src/tokenVoting). They encapsulate all the Typechain and Subgraph calls and provide a high level library.
 
@@ -214,7 +214,7 @@ The PluginSetup's `prepareInstallation()` will typically create a new instance o
 
 By default, only the DAO can upgrade plugins to newer versions. This requires passing a proposal.
 
-[Learn more about plugin upgrades](https://devs.aragon.org/docs/osx/how-to-guides/plugin-development/upgradeable-plugin/updating-versions).
+[Learn more about plugin upgrades](https://devs.aragon.org/docs/osx/how-to-guides/plugin-development/upgradeable-plugin/updating-versions)
 
 ## Development
 
