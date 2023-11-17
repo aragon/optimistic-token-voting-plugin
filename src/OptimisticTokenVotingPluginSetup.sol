@@ -27,7 +27,8 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
     using ERC165Checker for address;
 
     /// @notice The address of the `OptimisticTokenVotingPlugin` base contract.
-    OptimisticTokenVotingPlugin private immutable optimisticTokenVotingPluginBase;
+    OptimisticTokenVotingPlugin
+        private immutable optimisticTokenVotingPluginBase;
 
     /// @notice The address of the `GovernanceERC20` base contract.
     address public immutable governanceERC20Base;
@@ -73,24 +74,20 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
     function prepareInstallation(
         address _dao,
         bytes calldata _installParameters
-    ) external returns (address plugin, PreparedSetupData memory preparedSetupData) {
+    )
+        external
+        returns (address plugin, PreparedSetupData memory preparedSetupData)
+    {
         // Decode `_installParameters` to extract the params needed for deploying and initializing `OptimisticTokenVoting` plugin,
         // and the required helpers
         (
-            OptimisticTokenVotingPlugin.OptimisticGovernanceSettings memory votingSettings,
+            OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+                memory votingSettings,
             TokenSettings memory tokenSettings,
             // only used for GovernanceERC20 (when token is not passed)
             GovernanceERC20.MintSettings memory mintSettings,
             address[] memory proposers
-        ) = abi.decode(
-                _installParameters,
-                (
-                    OptimisticTokenVotingPlugin.OptimisticGovernanceSettings,
-                    TokenSettings,
-                    GovernanceERC20.MintSettings,
-                    address[]
-                )
-            );
+        ) = decodeInstallationParams(_installParameters);
 
         address token = tokenSettings.addr;
 
@@ -153,7 +150,9 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
         // Prepare permissions
         PermissionLib.MultiTargetPermission[]
             memory permissions = new PermissionLib.MultiTargetPermission[](
-                tokenSettings.addr != address(0) ? 3 + proposers.length : 4 + proposers.length
+                tokenSettings.addr != address(0)
+                    ? 3 + proposers.length
+                    : 4 + proposers.length
             );
 
         // Request the permissions to be granted
@@ -174,7 +173,8 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
             where: plugin,
             who: _dao,
             condition: PermissionLib.NO_CONDITION,
-            permissionId: optimisticTokenVotingPluginBase.UPGRADE_PLUGIN_PERMISSION_ID()
+            permissionId: optimisticTokenVotingPluginBase
+                .UPGRADE_PLUGIN_PERMISSION_ID()
         });
 
         // The plugin can make the DAO execute actions
@@ -193,7 +193,8 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
                 where: plugin,
                 who: proposers[i],
                 condition: PermissionLib.NO_CONDITION,
-                permissionId: optimisticTokenVotingPluginBase.PROPOSER_PERMISSION_ID()
+                permissionId: optimisticTokenVotingPluginBase
+                    .PROPOSER_PERMISSION_ID()
             });
 
             unchecked {
@@ -202,16 +203,18 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
         }
 
         if (tokenSettings.addr == address(0)) {
-            bytes32 tokenMintPermission = GovernanceERC20(token).MINT_PERMISSION_ID();
+            bytes32 tokenMintPermission = GovernanceERC20(token)
+                .MINT_PERMISSION_ID();
 
             // The DAO can mint ERC20 tokens
-            permissions[3 + proposers.length] = PermissionLib.MultiTargetPermission({
-                operation: PermissionLib.Operation.Grant,
-                where: token,
-                who: _dao,
-                condition: PermissionLib.NO_CONDITION,
-                permissionId: tokenMintPermission
-            });
+            permissions[3 + proposers.length] = PermissionLib
+                .MultiTargetPermission({
+                    operation: PermissionLib.Operation.Grant,
+                    where: token,
+                    who: _dao,
+                    condition: PermissionLib.NO_CONDITION,
+                    permissionId: tokenMintPermission
+                });
         }
 
         preparedSetupData.helpers = helpers;
@@ -222,7 +225,11 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
     function prepareUninstallation(
         address _dao,
         SetupPayload calldata _payload
-    ) external view returns (PermissionLib.MultiTargetPermission[] memory permissions) {
+    )
+        external
+        view
+        returns (PermissionLib.MultiTargetPermission[] memory permissions)
+    {
         // Prepare permissions.
         uint256 helperLength = _payload.currentHelpers.length;
         if (helperLength != 1) {
@@ -235,9 +242,13 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
 
         bool[] memory supportedIds = _getTokenInterfaceIds(token);
 
-        bool isGovernanceERC20 = supportedIds[0] && supportedIds[1] && !supportedIds[2];
+        bool isGovernanceERC20 = supportedIds[0] &&
+            supportedIds[1] &&
+            !supportedIds[2];
 
-        permissions = new PermissionLib.MultiTargetPermission[](isGovernanceERC20 ? 4 : 3);
+        permissions = new PermissionLib.MultiTargetPermission[](
+            isGovernanceERC20 ? 4 : 3
+        );
 
         // Set permissions to be Revoked.
         permissions[0] = PermissionLib.MultiTargetPermission({
@@ -254,7 +265,8 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
             where: _payload.plugin,
             who: _dao,
             condition: PermissionLib.NO_CONDITION,
-            permissionId: optimisticTokenVotingPluginBase.UPGRADE_PLUGIN_PERMISSION_ID()
+            permissionId: optimisticTokenVotingPluginBase
+                .UPGRADE_PLUGIN_PERMISSION_ID()
         });
 
         permissions[2] = PermissionLib.MultiTargetPermission({
@@ -286,10 +298,56 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
         return address(optimisticTokenVotingPluginBase);
     }
 
+    /// @notice Encodes the given installation parameters into a byte array
+    function encodeInstallationParams(
+        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+            calldata _votingSettings,
+        TokenSettings calldata _tokenSettings,
+        // only used for GovernanceERC20 (when a token is not passed)
+        GovernanceERC20.MintSettings calldata _mintSettings,
+        address[] calldata _proposers
+    ) external pure returns (bytes memory) {
+        return
+            abi.encode(
+                _votingSettings,
+                _tokenSettings,
+                _mintSettings,
+                _proposers
+            );
+    }
+
+    /// @notice Decodes the given byte array into the original installation parameters
+    function decodeInstallationParams(
+        bytes memory _data
+    )
+        public
+        pure
+        returns (
+            OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
+                memory votingSettings,
+            TokenSettings memory tokenSettings,
+            // only used for GovernanceERC20 (when token is not passed)
+            GovernanceERC20.MintSettings memory mintSettings,
+            address[] memory proposers
+        )
+    {
+        (votingSettings, tokenSettings, mintSettings, proposers) = abi.decode(
+            _data,
+            (
+                OptimisticTokenVotingPlugin.OptimisticGovernanceSettings,
+                TokenSettings,
+                GovernanceERC20.MintSettings,
+                address[]
+            )
+        );
+    }
+
     /// @notice Retrieves the interface identifiers supported by the token contract.
     /// @dev It is crucial to verify if the provided token address represents a valid contract before using the below.
     /// @param token The token address
-    function _getTokenInterfaceIds(address token) private view returns (bool[] memory) {
+    function _getTokenInterfaceIds(
+        address token
+    ) private view returns (bool[] memory) {
         bytes4[] memory interfaceIds = new bytes4[](3);
         interfaceIds[0] = type(IERC20Upgradeable).interfaceId;
         interfaceIds[1] = type(IVotesUpgradeable).interfaceId;
