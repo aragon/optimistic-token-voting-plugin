@@ -41,7 +41,7 @@ contract OptimisticTokenVotingPluginSetupTest is Test {
                 IDAO(address(0x0)),
                 "",
                 "",
-                mintSettings
+                _mintSettings
             );
             // Base
             governanceWrappedERC20Base = new GovernanceWrappedERC20(
@@ -613,7 +613,7 @@ contract OptimisticTokenVotingPluginSetupTest is Test {
         );
     }
 
-    function test_PrepareUninstallationReturnsTheProperPermissions() public {
+    function test_PrepareUninstallationReturnsTheProperPermissions_1() public {
         // Prepare a dummy install
         bytes memory installationParams = pluginSetup.encodeInstallationParams(
             votingSettings,
@@ -693,6 +693,106 @@ contract OptimisticTokenVotingPluginSetupTest is Test {
         assertEq(
             _permissionChanges[3].where,
             address(governanceERC20Base),
+            "Incorrect where"
+        );
+        assertEq(_permissionChanges[3].who, address(dao), "Incorrect who");
+        assertEq(
+            _permissionChanges[3].condition,
+            address(0),
+            "Incorrect condition"
+        );
+        assertEq(
+            _permissionChanges[3].permissionId,
+            keccak256("MINT_PERMISSION"),
+            "Incorrect permission"
+        );
+    }
+
+    function test_PrepareUninstallationReturnsTheProperPermissions_2() public {
+        // Prepare a dummy install
+        tokenSettings = OptimisticTokenVotingPluginSetup.TokenSettings({
+            addr: address(0x0),
+            name: "Dummy Token",
+            symbol: "DTK"
+        });
+        bytes memory installationParams = pluginSetup.encodeInstallationParams(
+            votingSettings,
+            tokenSettings,
+            mintSettings,
+            proposers
+        );
+        (
+            address _dummyPlugin,
+            IPluginSetup.PreparedSetupData memory _preparedSetupData
+        ) = pluginSetup.prepareInstallation(address(dao), installationParams);
+
+        OptimisticTokenVotingPluginSetup.SetupPayload
+            memory _payload = IPluginSetup.SetupPayload({
+                plugin: _dummyPlugin,
+                currentHelpers: _preparedSetupData.helpers,
+                data: hex""
+            });
+
+        // Check uninstall
+        PermissionLib.MultiTargetPermission[]
+            memory _permissionChanges = pluginSetup.prepareUninstallation(
+                address(dao),
+                _payload
+            );
+
+        assertEq(
+            _permissionChanges.length,
+            4,
+            "Incorrect permission changes length"
+        );
+        // 1
+        assertEq(
+            uint256(_permissionChanges[0].operation),
+            uint256(PermissionLib.Operation.Revoke),
+            "Incorrect operation"
+        );
+        assertEq(_permissionChanges[0].where, _dummyPlugin);
+        assertEq(_permissionChanges[0].who, address(dao));
+        assertEq(_permissionChanges[0].condition, address(0));
+        assertEq(
+            _permissionChanges[0].permissionId,
+            keccak256("UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION")
+        );
+        // 2
+        assertEq(
+            uint256(_permissionChanges[1].operation),
+            uint256(PermissionLib.Operation.Revoke),
+            "Incorrect operation"
+        );
+        assertEq(_permissionChanges[1].where, _dummyPlugin);
+        assertEq(_permissionChanges[1].who, address(dao));
+        assertEq(_permissionChanges[1].condition, address(0));
+        assertEq(
+            _permissionChanges[1].permissionId,
+            keccak256("UPGRADE_PLUGIN_PERMISSION")
+        );
+        // 3
+        assertEq(
+            uint256(_permissionChanges[2].operation),
+            uint256(PermissionLib.Operation.Revoke),
+            "Incorrect operation"
+        );
+        assertEq(_permissionChanges[2].where, address(dao));
+        assertEq(_permissionChanges[2].who, _dummyPlugin);
+        assertEq(_permissionChanges[2].condition, address(0));
+        assertEq(
+            _permissionChanges[2].permissionId,
+            keccak256("EXECUTE_PERMISSION")
+        );
+        // minting 1
+        assertEq(
+            uint256(_permissionChanges[3].operation),
+            uint256(PermissionLib.Operation.Revoke),
+            "Incorrect operation"
+        );
+        assertEq(
+            _permissionChanges[3].where,
+            _preparedSetupData.helpers[0],
             "Incorrect where"
         );
         assertEq(_permissionChanges[3].who, address(dao), "Incorrect who");
