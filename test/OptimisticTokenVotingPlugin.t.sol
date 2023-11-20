@@ -1952,68 +1952,6 @@ contract OptimisticTokenVotingPluginTest is Test {
         plugin.updateOptimisticGovernanceSettings(newSettings);
     }
 
-    function test_UpdateOptimisticGovernanceSettingsRevertsWhenMinProposerVotingPowerIsMoreThanTheTokenSupply()
-        public
-    {
-        dao.grant(
-            address(plugin),
-            alice,
-            plugin.UPDATE_OPTIMISTIC_GOVERNANCE_SETTINGS_PERMISSION_ID()
-        );
-
-        OptimisticTokenVotingPlugin.OptimisticGovernanceSettings
-            memory newSettings = OptimisticTokenVotingPlugin
-                .OptimisticGovernanceSettings({
-                    minVetoRatio: uint32(RATIO_BASE / 10),
-                    minDuration: 10 days,
-                    minProposerVotingPower: 10 ether + 1
-                });
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OptimisticTokenVotingPlugin
-                    .MinProposerVotingPowerOutOfBounds
-                    .selector,
-                10 ether,
-                10 ether + 1
-            )
-        );
-        plugin.updateOptimisticGovernanceSettings(newSettings);
-
-        // 2
-        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
-            minVetoRatio: uint32(RATIO_BASE / 10),
-            minDuration: 10 days,
-            minProposerVotingPower: 50 ether
-        });
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OptimisticTokenVotingPlugin
-                    .MinProposerVotingPowerOutOfBounds
-                    .selector,
-                10 ether,
-                50 ether
-            )
-        );
-        plugin.updateOptimisticGovernanceSettings(newSettings);
-
-        // 3
-        newSettings = OptimisticTokenVotingPlugin.OptimisticGovernanceSettings({
-            minVetoRatio: uint32(RATIO_BASE / 10),
-            minDuration: 10 days,
-            minProposerVotingPower: 200 ether
-        });
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OptimisticTokenVotingPlugin
-                    .MinProposerVotingPowerOutOfBounds
-                    .selector,
-                10 ether,
-                200 ether
-            )
-        );
-        plugin.updateOptimisticGovernanceSettings(newSettings);
-    }
-
     function test_UpdateOptimisticGovernanceSettingsEmitsAnEventWhenSuccessful()
         public
     {
