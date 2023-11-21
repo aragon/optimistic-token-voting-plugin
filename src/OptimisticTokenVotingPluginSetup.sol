@@ -58,6 +58,9 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
     /// @param length The array length of passed helpers.
     error WrongHelpersArrayLength(uint256 length);
 
+    /// @notice Thrown when trying to prepare an installation with no proposers.
+    error NoProposers();
+
     /// @notice The contract constructor deploying the plugin implementation contract and receiving the governance token base contracts to clone from.
     /// @param _governanceERC20Base The base `GovernanceERC20` contract to create clones from.
     /// @param _governanceWrappedERC20Base The base `GovernanceWrappedERC20` contract to create clones from.
@@ -88,6 +91,10 @@ contract OptimisticTokenVotingPluginSetup is PluginSetup {
             GovernanceERC20.MintSettings memory mintSettings,
             address[] memory proposers
         ) = decodeInstallationParams(_installParameters);
+
+        if (proposers.length == 0) {
+            revert NoProposers();
+        }
 
         address token = tokenSettings.addr;
 

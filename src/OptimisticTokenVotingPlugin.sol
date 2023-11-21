@@ -479,16 +479,6 @@ contract OptimisticTokenVotingPlugin is
             });
         }
 
-        if (
-            totalVotingPower(block.number - 1) <
-            _governanceSettings.minProposerVotingPower
-        ) {
-            revert MinProposerVotingPowerOutOfBounds({
-                limit: totalVotingPower(block.number - 1),
-                actual: _governanceSettings.minProposerVotingPower
-            });
-        }
-
         governanceSettings = _governanceSettings;
 
         emit OptimisticGovernanceSettingsUpdated({
