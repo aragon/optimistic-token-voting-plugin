@@ -808,6 +808,145 @@ contract OptimisticTokenVotingPluginSetupTest is Test {
         );
     }
 
+    function test_CreatesANewERC20Token() public {
+        // new Token
+        tokenSettings = OptimisticTokenVotingPluginSetup.TokenSettings({
+            addr: address(0x0),
+            name: "New Token",
+            symbol: "NTK"
+        });
+
+        address[] memory receivers = new address[](1);
+        receivers[0] = address(0x1234);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 100;
+        mintSettings = GovernanceERC20.MintSettings({
+            receivers: receivers,
+            amounts: amounts
+        });
+        bytes memory installationParams = pluginSetup.encodeInstallationParams(
+            votingSettings,
+            tokenSettings,
+            // only used for GovernanceERC20 (when a token is not passed)
+            mintSettings,
+            proposers
+        );
+        (
+            ,
+            IPluginSetup.PreparedSetupData memory _preparedSetupData
+        ) = pluginSetup.prepareInstallation(address(dao), installationParams);
+
+        GovernanceERC20 _token = GovernanceERC20(_preparedSetupData.helpers[0]);
+        assertEq(_token.balanceOf(address(0x1234)), 100);
+        assertEq(_token.balanceOf(address(0x5678)), 0);
+        assertEq(_token.balanceOf(address(0x0)), 0);
+
+        assertEq(_token.name(), "New Token");
+        assertEq(_token.symbol(), "NTK");
+    }
+
+    function test_WrapsAnExistingToken() public {
+        // Wrap existing token
+        ERC20Mock _originalToken = new ERC20Mock();
+        _originalToken.mint(address(0x1234), 100);
+        _originalToken.mint(address(0x5678), 200);
+        assertEq(_originalToken.balanceOf(address(0x1234)), 100);
+        assertEq(_originalToken.balanceOf(address(0x5678)), 200);
+
+        tokenSettings = OptimisticTokenVotingPluginSetup.TokenSettings({
+            addr: address(_originalToken),
+            name: "Wrapped Mock Token",
+            symbol: "wMTK"
+        });
+        bytes memory installationParams = pluginSetup.encodeInstallationParams(
+            votingSettings,
+            tokenSettings,
+            mintSettings,
+            proposers
+        );
+        (
+            ,
+            IPluginSetup.PreparedSetupData memory _preparedSetupData
+        ) = pluginSetup.prepareInstallation(address(dao), installationParams);
+
+        GovernanceWrappedERC20 _wrappedToken = GovernanceWrappedERC20(
+            _preparedSetupData.helpers[0]
+        );
+        assertEq(_wrappedToken.balanceOf(address(0x1234)), 0);
+        assertEq(_wrappedToken.balanceOf(address(0x5678)), 0);
+        assertEq(_wrappedToken.balanceOf(address(0x0)), 0);
+
+        assertEq(_wrappedToken.name(), "Wrapped Mock Token");
+        assertEq(_wrappedToken.symbol(), "wMTK");
+
+        vm.startPrank(address(0x1234));
+        _originalToken.approve(address(_wrappedToken), 100);
+        _wrappedToken.depositFor(address(0x1234), 100);
+
+        vm.startPrank(address(0x5678));
+        _originalToken.approve(address(_wrappedToken), 200);
+        _wrappedToken.depositFor(address(0x5678), 200);
+
+        assertEq(_wrappedToken.balanceOf(address(0x1234)), 100);
+        assertEq(_wrappedToken.balanceOf(address(0x5678)), 200);
+        assertEq(_wrappedToken.balanceOf(address(0x0)), 0);
+
+        vm.stopPrank();
+    }
+
+    function test_UsesAnExistingGovernanceERC20Token() public {
+        // Use existing governance token
+        address[] memory receivers = new address[](2);
+        receivers[0] = address(0x1234);
+        receivers[1] = address(0x5678);
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 100;
+        amounts[1] = 200;
+        mintSettings = GovernanceERC20.MintSettings({
+            receivers: receivers,
+            amounts: amounts
+        });
+        GovernanceERC20 _token = GovernanceERC20(
+            payable(
+                createProxyAndCall(
+                    address(governanceERC20Base),
+                    abi.encodeWithSelector(
+                        GovernanceERC20.initialize.selector,
+                        IDAO(dao),
+                        "My Token",
+                        "MTK",
+                        mintSettings
+                    )
+                )
+            )
+        );
+        tokenSettings = OptimisticTokenVotingPluginSetup.TokenSettings({
+            addr: address(_token),
+            name: "",
+            symbol: ""
+        });
+        bytes memory installationParams = pluginSetup.encodeInstallationParams(
+            votingSettings,
+            tokenSettings,
+            mintSettings,
+            proposers
+        );
+        (
+            ,
+            IPluginSetup.PreparedSetupData memory _preparedSetupData
+        ) = pluginSetup.prepareInstallation(address(dao), installationParams);
+
+        GovernanceWrappedERC20 _wrappedToken = GovernanceWrappedERC20(
+            _preparedSetupData.helpers[0]
+        );
+        assertEq(_wrappedToken.name(), "My Token");
+        assertEq(_wrappedToken.symbol(), "MTK");
+
+        assertEq(_wrappedToken.balanceOf(address(0x1234)), 100);
+        assertEq(_wrappedToken.balanceOf(address(0x5678)), 200);
+        assertEq(_wrappedToken.balanceOf(address(0x0)), 0);
+    }
+
     // HELPERS
     function createProxyAndCall(
         address _logic,
