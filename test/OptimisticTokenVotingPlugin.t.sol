@@ -1359,18 +1359,24 @@ contract OptimisticTokenVotingPluginTest is Test {
         );
 
         vm.warp(startDate + 1);
-
         assertEq(
             plugin.canExecute(proposalId),
             false,
             "The proposal shouldn't be executable"
         );
-        plugin.veto(proposalId);
 
+        vm.warp(endDate - 1);
         assertEq(
             plugin.canExecute(proposalId),
             false,
             "The proposal shouldn't be executable yet"
+        );
+
+        vm.warp(endDate);
+        assertEq(
+            plugin.canExecute(proposalId),
+            true,
+            "The proposal should now be executable"
         );
     }
 
